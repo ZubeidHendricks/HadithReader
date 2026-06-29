@@ -1,61 +1,111 @@
 import SwiftUI
 import AppFactoryKit
 
-// Daily Devotional & Bible — a verse + reflection each day, save favorites, and a
-// daily reminder. Fully on-device. Pro unlocks unlimited favorites (and is the
-// seam for full reading plans + audio).
+// Hadith Reader — daily narration, browse the collections, bookmark favorites.
 struct ContentView: View {
     @EnvironmentObject private var factory: AppFactory
-    @StateObject private var store = DevotionalStore()
-
-    private let today = DevotionalLibrary.today()
+    @StateObject private var store = HadithStore()
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 22) {
-                    card(today)
-                    if !store.favorites.isEmpty {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Saved").font(.headline)
-                            ForEach(DevotionalLibrary.all.filter { store.favorites.contains($0.id) }) { d in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(d.verse).font(.callout)
-                                    Text(d.reference).font(.caption).foregroundStyle(.secondary)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.vertical, 4)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-                .padding(20)
-            }
-            .navigationTitle("Today")
+        TabView {
+            todayTab.tabItem { Label("Today", systemImage: "sun.max") }
+            collectionsTab.tabItem { Label("Collections", systemImage: "books.vertical") }
+            bookmarksTab.tabItem { Label("Saved", systemImage: "bookmark") }
         }
         .task { store.scheduleDailyReminder() }
     }
 
-    private func card(_ d: Devotional) -> some View {
-        VStack(spacing: 16) {
-            Image(systemName: "book.closed.fill").font(.system(size: 36)).foregroundStyle(.orange)
-            Text(d.verse).font(.title3.weight(.semibold)).multilineTextAlignment(.center)
-            Text(d.reference).font(.subheadline).foregroundStyle(.secondary)
-            Divider()
-            Text(d.reflection).font(.body).multilineTextAlignment(.center).foregroundStyle(.secondary)
-            Button {
-                if store.isFavorite(d) { store.toggle(d) }
-                else if store.reachedFreeLimit(isSubscribed: factory.subscriptions.isSubscribed) {
-                    factory.presentPaywall(placement: "favorites_limit")
-                } else { store.toggle(d) }
-            } label: {
-                Label(store.isFavorite(d) ? "Saved" : "Save", systemImage: store.isFavorite(d) ? "heart.fill" : "heart")
-                    .frame(maxWidth: .infinity, minHeight: 48)
+    // MARK: Today
+
+    private var todayTab: some View {
+        NavigationStack {
+            ScrollView {
+                hadithCard(HadithLibrary.today(), big: true).padding(20)
             }
-            .buttonStyle(.borderedProminent).tint(.orange)
+            .navigationTitle("Today")
         }
-        .padding(20)
-        .background(RoundedRectangle(cornerRadius: 20).fill(.orange.opacity(0.10)))
+    }
+
+    // MARK: Collections
+
+    private var collectionsTab: some View {
+        NavigationStack {
+            List {
+                ForEach(HadithLibrary.collections, id: \.self) { collection in
+                    let free = HadithLibrary.isFree(collection)
+                    if free || factory.subscriptions.isSubscribed {
+                        NavigationLink(collection) { collectionView(collection) }
+                    } else {
+                        Button {
+                            factory.presentPaywall(placement: "collection_\(collection)")
+                        } label: {
+                            HStack { Text(collection); Spacer(); Image(systemName: "lock.fill").foregroundStyle(.secondary) }
+                        }
+                        .tint(.primary)
+                    }
+                }
+            }
+            .navigationTitle("Collections")
+        }
+    }
+
+    private func collectionView(_ collection: String) -> some View {
+        ScrollView {
+            VStack(spacing: 14) {
+                ForEach(HadithLibrary.inCollection(collection)) { hadithCard($0, big: false) }
+            }
+            .padding(16)
+        }
+        .navigationTitle(collection)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    // MARK: Bookmarks
+
+    private var bookmarksTab: some View {
+        NavigationStack {
+            Group {
+                let saved = HadithLibrary.all.filter { store.bookmarks.contains($0.id) }
+                if saved.isEmpty {
+                    ContentUnavailableView("No bookmarks yet", systemImage: "bookmark",
+                                           description: Text("Tap the bookmark icon on any hadith to save it."))
+                } else {
+                    ScrollView { VStack(spacing: 14) { ForEach(saved) { hadithCard($0, big: false) } }.padding(16) }
+                }
+            }
+            .navigationTitle("Saved")
+        }
+    }
+
+    // MARK: Card
+
+    private func hadithCard(_ h: Hadith, big: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("“\(h.text)”")
+                .font(big ? .title3.weight(.medium) : .body)
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(h.citation).font(.subheadline.weight(.semibold)).foregroundStyle(.green)
+                    Text("Narrated by \(h.narrator)").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button { toggleBookmark(h) } label: {
+                    Image(systemName: store.isBookmarked(h) ? "bookmark.fill" : "bookmark")
+                        .foregroundStyle(.green)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 16).fill(.green.opacity(0.10)))
+    }
+
+    private func toggleBookmark(_ h: Hadith) {
+        if !store.isBookmarked(h) && store.reachedFreeLimit(isSubscribed: factory.subscriptions.isSubscribed) {
+            factory.presentPaywall(placement: "bookmark_limit")
+        } else {
+            store.toggle(h)
+        }
     }
 }

@@ -1,43 +1,28 @@
-# DailyDevotionalBible
+# Hadith Reader
 
-Generated from niche `faith-devotional` (Faith, tier A, score 74).
+A clean iOS reader for the major hadith collections — a daily narration, browsable
+collections, and bookmarks. Built on [AppFactoryKit](https://github.com/ZubeidHendricks/AppFactoryKit).
 
-**Utility:** Daily verses, devotionals, prayer log
-**Primary ASO keyword:** `daily bible`
-**Also target:** `devotional`, `bible verse`, `prayer app`, `daily verse`
-**Paywall hook:** Full plans, audio, journaling, widgets, no ads
+**Collections:** Sahih al-Bukhari, Sahih Muslim, Sunan Abi Dawud, Jami' at-Tirmidhi
+(Bukhari & Muslim free; the rest unlock with Pro).
 
-> Faith audiences show very high retention + willingness to subscribe.
+## Features
+- **Hadith of the Day** — an authentic narration daily, with narrator and source citation
+- **Browse by collection** with proper references (e.g. *Sahih al-Bukhari 1*)
+- **Bookmarks** with a daily reminder
+- Native **StoreKit 2** subscriptions (no third-party SDK)
 
-## Build it
-
+## Build
 ```bash
-brew install xcodegen        # once
-cd DailyDevotionalBible
+brew install xcodegen
+cd HadithReader
 xcodegen generate
-open DailyDevotionalBible.xcodeproj
+open HadithReader.xcodeproj
 ```
 
-The app runs immediately on a MockPurchaseProvider (real paywall UI, fake
-purchases). To go live:
+## Tests
+`xcodebuild test -scheme Tests -destination 'platform=iOS Simulator,name=iPhone 17'` — verifies
+the library integrity, daily selection, citation format, and free/Pro collection gating (5/5 pass).
 
-1. Replace `revenueCatKey` in `Sources/App.swift` with your RevenueCat key.
-2. In App Store Connect create products `faith-devotional_yearly` and `faith-devotional_weekly`,
-   map them into a RevenueCat offering, entitlement id `premium`.
-3. Build the real feature in `Sources/ContentView.swift`.
-4. **Guideline 4.3:** make the function, UI, screenshots and keywords genuinely
-   distinct from any sibling app. Re-niche, never reskin.
-
-Bundle id: `com.zubeid.faithdevotional`
-
-## Ship to TestFlight
-
-This app ships with a Fastlane lane + GitHub Actions workflow. One-time account
-setup (API key, signing) is documented in the kit's `Tools/appgen/DEPLOYMENT.md`.
-Once your GitHub secrets are set, trigger the **TestFlight** workflow (or push a
-`v*` tag), or run locally:
-
-```bash
-bundle install
-bundle exec fastlane beta
-```
+> Narration texts are widely-known authentic hadiths with standard reference numbers, included
+> as a starter set; expand the library in `Sources/Hadiths.swift`.
