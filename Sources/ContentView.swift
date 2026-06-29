@@ -9,6 +9,7 @@ struct ContentView: View {
         TabView {
             TodayView(store: store).tabItem { Label("Today", systemImage: "sun.max") }
             CollectionsView(store: store).tabItem { Label("Collections", systemImage: "books.vertical") }
+            SearchView(store: store).tabItem { Label("Search", systemImage: "magnifyingglass") }
             BookmarksView(store: store).tabItem { Label("Saved", systemImage: "bookmark") }
         }
         .task { store.scheduleDailyReminder() }
@@ -103,6 +104,61 @@ private struct BookmarksView: View {
                 }
             }
             .navigationTitle("Saved")
+        }
+    }
+}
+
+// MARK: - Search
+
+private struct SearchView: View {
+    @EnvironmentObject private var factory: AppFactory
+    @ObservedObject var store: HadithStore
+    @State private var query = ""
+    @State private var results: [Hadith] = []
+    @State private var searching = false
+    @State private var didSearch = false
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if searching {
+                    ProgressView("Searching…")
+                } else if didSearch && results.isEmpty {
+                    ContentUnavailableView.search(text: query)
+                } else if results.isEmpty {
+                    placeholder
+                } else {
+                    List(results) { HadithRow(hadith: $0, store: store) }.listStyle(.plain)
+                }
+            }
+            .navigationTitle("Search")
+            .searchable(text: $query, prompt: "Search the hadiths")
+            .onSubmit(of: .search) { runSearch() }
+        }
+    }
+
+    private var placeholder: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "magnifyingglass").font(.largeTitle).foregroundStyle(.secondary)
+            Text(factory.subscriptions.isSubscribed
+                 ? "Search across all 9 collections."
+                 : "Search Sahih al-Bukhari & Muslim. Upgrade to search every collection.")
+                .multilineTextAlignment(.center).foregroundStyle(.secondary).padding(.horizontal, 32)
+            if !factory.subscriptions.isSubscribed {
+                Button("Unlock all collections") { factory.presentPaywall(placement: "search_all") }
+                    .buttonStyle(.bordered)
+            }
+        }
+        .padding(.top, 60)
+    }
+
+    private func runSearch() {
+        let cols = factory.subscriptions.isSubscribed ? HadithLibrary.collections : HadithLibrary.freeCollectionList
+        let q = query
+        searching = true; didSearch = true
+        Task {
+            let found = await Task.detached { HadithLibrary.search(q, in: cols) }.value
+            await MainActor.run { results = found; searching = false }
         }
     }
 }

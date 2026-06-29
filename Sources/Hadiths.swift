@@ -78,6 +78,22 @@ enum HadithLibrary {
         let k = ((n % list.count) + list.count) % list.count
         return Array(list[k...] + list[..<k])
     }
+
+    /// Full-text search across the given collections (English + Arabic), capped.
+    static func search(_ query: String, in cols: [Collection], limit: Int = 300) -> [Hadith] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard q.count >= 2 else { return [] }
+        var out: [Hadith] = []
+        for c in cols {
+            for h in load(c) where h.text.lowercased().contains(q) || h.arabic.contains(query) {
+                out.append(h)
+                if out.count >= limit { return out }
+            }
+        }
+        return out
+    }
+
+    static var freeCollectionList: [Collection] { collections.filter { $0.isFree } }
 }
 
 /// Saved bookmarks (denormalized so they display without loading a collection)

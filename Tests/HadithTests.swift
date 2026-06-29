@@ -29,6 +29,19 @@ final class HadithTests: XCTestCase {
         XCTAssertEqual(ids.count, Set(ids).count)
     }
 
+    func testSearchFindsMatches() {
+        let bukhari = HadithLibrary.collections.first { $0.name == "Sahih al-Bukhari" }!
+        let results = HadithLibrary.search("prayer", in: [bukhari])
+        XCTAssertFalse(results.isEmpty)
+        XCTAssertTrue(results.allSatisfy {
+            $0.text.lowercased().contains("prayer") || $0.arabic.contains("prayer")
+        })
+    }
+
+    func testSearchIgnoresTooShortQueries() {
+        XCTAssertTrue(HadithLibrary.search("a", in: HadithLibrary.collections).isEmpty)
+    }
+
     func testTodayDrawsFromFreeCollection() {
         let today = HadithLibrary.today()
         XCTAssertNotNil(today)
