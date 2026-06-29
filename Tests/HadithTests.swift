@@ -2,6 +2,13 @@ import XCTest
 // Hadiths.swift compiled into this test target.
 
 final class HadithTests: XCTestCase {
+    func testBundledDatasetLoaded() {
+        // Confirms the bundled JSON resource (not the tiny fallback) is loaded.
+        XCTAssertGreaterThan(HadithLibrary.all.count, 1000,
+                             "expected the bundled dataset; got \(HadithLibrary.all.count)")
+        XCTAssertGreaterThanOrEqual(HadithLibrary.collections.count, 6)
+    }
+
     func testLibraryNonEmptyAndUnique() {
         XCTAssertFalse(HadithLibrary.all.isEmpty)
         let ids = HadithLibrary.all.map(\.id)

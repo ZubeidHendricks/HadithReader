@@ -17,6 +17,7 @@ targets:
     platform: iOS
     sources:
       - Sources
+      - Resources
     dependencies:
       - package: AppFactoryKit
         product: AppFactoryKit
@@ -44,6 +45,7 @@ targets:
     sources:
       - Tests
       - path: Sources/Hadiths.swift
+      - Resources
     settings:
       base:
         PRODUCT_NAME: HadithReaderTests
