@@ -3,8 +3,11 @@
 A clean iOS reader for the major hadith collections — a daily narration, browsable
 collections, and bookmarks. Built on [AppFactoryKit](https://github.com/ZubeidHendricks/AppFactoryKit).
 
-**Collections:** Sahih al-Bukhari, Sahih Muslim, Sunan Abi Dawud, Jami' at-Tirmidhi
-(Bukhari & Muslim free; the rest unlock with Pro).
+**36,000+ hadiths** across 9 complete collections, **bilingual (Arabic + English)**, bundled
+offline: Sahih al-Bukhari, Sahih Muslim, Sunan Abi Dawud, Jami' at-Tirmidhi, Sunan an-Nasa'i,
+Sunan Ibn Majah, Muwatta Malik, 40 Hadith Nawawi, 40 Hadith Qudsi. (Bukhari & Muslim free; the
+rest unlock with Pro.) Data: open public-domain `fawazahmed0/hadith-api`, loaded per-collection
+on demand for fast launch.
 
 ## Features
 - **Hadith of the Day** — an authentic narration daily, with narrator and source citation

@@ -45,7 +45,7 @@ targets:
     sources:
       - Tests
       - path: Sources/Hadiths.swift
-      - Resources
+      - path: Resources/bukhari.json
     settings:
       base:
         PRODUCT_NAME: HadithReaderTests

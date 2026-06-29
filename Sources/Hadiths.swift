@@ -2,9 +2,10 @@ import Foundation
 import Combine
 import UserNotifications
 
-struct Hadith: Identifiable, Hashable, Decodable {
+struct Hadith: Identifiable, Hashable, Codable {
     let id: Int
     let text: String
+    let arabic: String
     let narrator: String
     let collection: String   // display name, e.g. "Sahih al-Bukhari"
     let reference: String    // hadith number
@@ -14,70 +15,86 @@ struct Hadith: Identifiable, Hashable, Decodable {
 private final class BundleToken {}
 
 enum HadithLibrary {
-    /// Bukhari & Muslim are free; the rest unlock with Pro.
+    struct Collection: Identifiable, Hashable {
+        let name: String       // display name
+        let file: String       // resource basename
+        var id: String { file }
+        var isFree: Bool { HadithLibrary.freeCollections.contains(name) }
+    }
+
     static let freeCollections: Set<String> = ["Sahih al-Bukhari", "Sahih Muslim"]
 
-    /// Preferred display order; only those actually present are shown.
-    private static let order = [
-        "Sahih al-Bukhari", "Sahih Muslim", "Sunan Abi Dawud", "Jami' at-Tirmidhi",
-        "Sunan an-Nasa'i", "Sunan Ibn Majah", "Muwatta Malik",
-        "40 Hadith Nawawi", "40 Hadith Qudsi",
+    /// The full set of bundled collections, in display order.
+    static let collections: [Collection] = [
+        .init(name: "Sahih al-Bukhari", file: "bukhari"),
+        .init(name: "Sahih Muslim", file: "muslim"),
+        .init(name: "Sunan Abi Dawud", file: "abudawud"),
+        .init(name: "Jami' at-Tirmidhi", file: "tirmidhi"),
+        .init(name: "Sunan an-Nasa'i", file: "nasai"),
+        .init(name: "Sunan Ibn Majah", file: "ibnmajah"),
+        .init(name: "Muwatta Malik", file: "malik"),
+        .init(name: "40 Hadith Nawawi", file: "nawawi"),
+        .init(name: "40 Hadith Qudsi", file: "qudsi"),
     ]
 
-    /// Loaded once from the bundled dataset (2,500+ narrations), with a small
-    /// built-in fallback if the resource is ever missing.
-    static let all: [Hadith] = load()
+    private static var cache: [String: [Hadith]] = [:]
+    private static let lock = NSLock()
 
-    static var collections: [String] {
-        let present = Set(all.map(\.collection))
-        let ordered = order.filter(present.contains)
-        let extras = present.subtracting(order).sorted()
-        return ordered + extras
-    }
-
-    static func today() -> Hadith {
-        guard !all.isEmpty else { return fallback[0] }
-        let day = Calendar.current.ordinality(of: .day, in: .era, for: Date()) ?? 0
-        return all[day % all.count]
-    }
-
-    static func inCollection(_ name: String) -> [Hadith] { all.filter { $0.collection == name } }
-    static func isFree(_ collection: String) -> Bool { freeCollections.contains(collection) }
-
-    private static func load() -> [Hadith] {
-        if let url = Bundle(for: BundleToken.self).url(forResource: "hadiths", withExtension: "json"),
-           let data = try? Data(contentsOf: url),
-           let decoded = try? JSONDecoder().decode([Hadith].self, from: data),
-           !decoded.isEmpty {
-            return decoded
+    /// Lazily load (and cache) one collection's hadiths from its bundled JSON.
+    static func load(_ collection: Collection) -> [Hadith] {
+        lock.lock(); defer { lock.unlock() }
+        if let cached = cache[collection.file] { return cached }
+        guard let url = Bundle(for: BundleToken.self).url(forResource: collection.file, withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let decoded = try? JSONDecoder().decode([Hadith].self, from: data) else {
+            cache[collection.file] = []
+            return []
         }
-        return fallback
+        cache[collection.file] = decoded
+        return decoded
     }
 
-    /// Minimal offline fallback (used only if the bundled JSON is unavailable).
-    static let fallback: [Hadith] = [
-        .init(id: 0, text: "The reward of deeds depends upon the intentions, and every person will get the reward according to what he intended.",
-              narrator: "'Umar ibn al-Khattab", collection: "Sahih al-Bukhari", reference: "1"),
-        .init(id: 1, text: "None of you truly believes until he loves for his brother what he loves for himself.",
-              narrator: "Anas ibn Malik", collection: "Sahih al-Bukhari", reference: "13"),
-        .init(id: 2, text: "Religion is sincerity (naseehah).",
-              narrator: "Tamim ad-Dari", collection: "Sahih Muslim", reference: "55"),
-    ]
+    static func load(named: String) -> [Hadith] {
+        guard let c = collections.first(where: { $0.name == named }) else { return [] }
+        return load(c)
+    }
+
+    static func isFree(_ name: String) -> Bool { freeCollections.contains(name) }
+
+    /// Deterministic "hadith of the day" drawn from the free collections.
+    static func today() -> Hadith? {
+        let day = Calendar.current.ordinality(of: .day, in: .era, for: Date()) ?? 0
+        let free = collections.filter { $0.isFree }
+        // Try free collections first (rotating by day), then any collection.
+        for candidate in rotated(free, by: day) + collections {
+            let items = load(candidate)
+            if !items.isEmpty { return items[day % items.count] }
+        }
+        return nil
+    }
+
+    private static func rotated(_ list: [Collection], by n: Int) -> [Collection] {
+        guard !list.isEmpty else { return [] }
+        let k = ((n % list.count) + list.count) % list.count
+        return Array(list[k...] + list[..<k])
+    }
 }
 
-/// Saved bookmarks + a daily reminder. Free tier caps bookmarks; Pro unlimited.
+/// Saved bookmarks (denormalized so they display without loading a collection)
+/// + a daily reminder. Free tier caps bookmarks; Pro unlimited.
 final class HadithStore: ObservableObject {
-    @Published private(set) var bookmarks: [Int] = []
+    @Published private(set) var bookmarks: [Hadith] = []
     static let freeBookmarks = 5
-    private let key = "hadith.bookmarks.v1"
+    private let key = "hadith.bookmarks.v2"
 
     init() { load() }
 
-    func isBookmarked(_ h: Hadith) -> Bool { bookmarks.contains(h.id) }
+    func isBookmarked(_ h: Hadith) -> Bool { bookmarks.contains { $0.id == h.id } }
     func reachedFreeLimit(isSubscribed: Bool) -> Bool { !isSubscribed && bookmarks.count >= Self.freeBookmarks }
 
     func toggle(_ h: Hadith) {
-        if let i = bookmarks.firstIndex(of: h.id) { bookmarks.remove(at: i) } else { bookmarks.append(h.id) }
+        if let i = bookmarks.firstIndex(where: { $0.id == h.id }) { bookmarks.remove(at: i) }
+        else { bookmarks.append(h) }
         save()
     }
 
@@ -94,6 +111,12 @@ final class HadithStore: ObservableObject {
         }
     }
 
-    private func load() { bookmarks = UserDefaults.standard.array(forKey: key) as? [Int] ?? [] }
-    private func save() { UserDefaults.standard.set(bookmarks, forKey: key) }
+    private func load() {
+        guard let d = UserDefaults.standard.data(forKey: key),
+              let v = try? JSONDecoder().decode([Hadith].self, from: d) else { return }
+        bookmarks = v
+    }
+    private func save() {
+        if let d = try? JSONEncoder().encode(bookmarks) { UserDefaults.standard.set(d, forKey: key) }
+    }
 }

@@ -1,97 +1,155 @@
 import SwiftUI
 import AppFactoryKit
 
-// Hadith Reader — daily narration, browse the collections, bookmark favorites.
 struct ContentView: View {
     @EnvironmentObject private var factory: AppFactory
     @StateObject private var store = HadithStore()
 
     var body: some View {
         TabView {
-            todayTab.tabItem { Label("Today", systemImage: "sun.max") }
-            collectionsTab.tabItem { Label("Collections", systemImage: "books.vertical") }
-            bookmarksTab.tabItem { Label("Saved", systemImage: "bookmark") }
+            TodayView(store: store).tabItem { Label("Today", systemImage: "sun.max") }
+            CollectionsView(store: store).tabItem { Label("Collections", systemImage: "books.vertical") }
+            BookmarksView(store: store).tabItem { Label("Saved", systemImage: "bookmark") }
         }
         .task { store.scheduleDailyReminder() }
     }
+}
 
-    // MARK: Today
+// MARK: - Today
 
-    private var todayTab: some View {
+private struct TodayView: View {
+    @ObservedObject var store: HadithStore
+    @State private var today: Hadith?
+
+    var body: some View {
         NavigationStack {
             ScrollView {
-                hadithCard(HadithLibrary.today(), big: true).padding(20)
+                if let today {
+                    HadithCard(hadith: today, store: store, big: true).padding(20)
+                } else {
+                    ProgressView().padding(.top, 80)
+                }
             }
             .navigationTitle("Today")
         }
+        .task {
+            today = await Task.detached { HadithLibrary.today() }.value
+        }
     }
+}
 
-    // MARK: Collections
+// MARK: - Collections
 
-    private var collectionsTab: some View {
+private struct CollectionsView: View {
+    @EnvironmentObject private var factory: AppFactory
+    @ObservedObject var store: HadithStore
+
+    var body: some View {
         NavigationStack {
-            List {
-                ForEach(HadithLibrary.collections, id: \.self) { collection in
-                    let free = HadithLibrary.isFree(collection)
-                    if free || factory.subscriptions.isSubscribed {
-                        NavigationLink(collection) { collectionView(collection) }
-                    } else {
-                        Button {
-                            factory.presentPaywall(placement: "collection_\(collection)")
-                        } label: {
-                            HStack { Text(collection); Spacer(); Image(systemName: "lock.fill").foregroundStyle(.secondary) }
-                        }
-                        .tint(.primary)
+            List(HadithLibrary.collections) { c in
+                if c.isFree || factory.subscriptions.isSubscribed {
+                    NavigationLink(c.name) { CollectionDetail(collection: c, store: store) }
+                } else {
+                    Button { factory.presentPaywall(placement: "collection_\(c.file)") } label: {
+                        HStack { Text(c.name); Spacer(); Image(systemName: "lock.fill").foregroundStyle(.secondary) }
                     }
+                    .tint(.primary)
                 }
             }
             .navigationTitle("Collections")
         }
     }
+}
 
-    private func collectionView(_ collection: String) -> some View {
-        ScrollView {
-            VStack(spacing: 14) {
-                ForEach(HadithLibrary.inCollection(collection)) { hadithCard($0, big: false) }
+private struct CollectionDetail: View {
+    let collection: HadithLibrary.Collection
+    @ObservedObject var store: HadithStore
+    @State private var items: [Hadith] = []
+    @State private var loading = true
+
+    var body: some View {
+        Group {
+            if loading {
+                ProgressView("Loading \(collection.name)…")
+            } else {
+                List(items) { h in
+                    HadithRow(hadith: h, store: store)
+                }
+                .listStyle(.plain)
             }
-            .padding(16)
         }
-        .navigationTitle(collection)
+        .navigationTitle(collection.name)
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            items = await Task.detached { HadithLibrary.load(collection) }.value
+            loading = false
+        }
     }
+}
 
-    // MARK: Bookmarks
+// MARK: - Bookmarks
 
-    private var bookmarksTab: some View {
+private struct BookmarksView: View {
+    @ObservedObject var store: HadithStore
+
+    var body: some View {
         NavigationStack {
             Group {
-                let saved = HadithLibrary.all.filter { store.bookmarks.contains($0.id) }
-                if saved.isEmpty {
+                if store.bookmarks.isEmpty {
                     ContentUnavailableView("No bookmarks yet", systemImage: "bookmark",
                                            description: Text("Tap the bookmark icon on any hadith to save it."))
                 } else {
-                    ScrollView { VStack(spacing: 14) { ForEach(saved) { hadithCard($0, big: false) } }.padding(16) }
+                    List(store.bookmarks) { HadithRow(hadith: $0, store: store) }.listStyle(.plain)
                 }
             }
             .navigationTitle("Saved")
         }
     }
+}
 
-    // MARK: Card
+// MARK: - Shared views
 
-    private func hadithCard(_ h: Hadith, big: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("“\(h.text)”")
-                .font(big ? .title3.weight(.medium) : .body)
+private struct HadithRow: View {
+    let hadith: Hadith
+    @ObservedObject var store: HadithStore
+    var body: some View {
+        NavigationLink { ScrollView { HadithCard(hadith: hadith, store: store, big: true).padding(20) } } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(hadith.text).font(.callout).lineLimit(3)
+                Text(hadith.citation).font(.caption).foregroundStyle(.green)
+            }
+            .padding(.vertical, 4)
+        }
+    }
+}
+
+private struct HadithCard: View {
+    let hadith: Hadith
+    @ObservedObject var store: HadithStore
+    @EnvironmentObject private var factory: AppFactory
+    var big: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if !hadith.arabic.isEmpty {
+                Text(hadith.arabic)
+                    .font(.system(size: big ? 24 : 20, weight: .medium))
+                    .multilineTextAlignment(.trailing)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .environment(\.layoutDirection, .rightToLeft)
+                Divider()
+            }
+            Text(hadith.text).font(big ? .body : .callout)
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(h.citation).font(.subheadline.weight(.semibold)).foregroundStyle(.green)
-                    Text("Narrated by \(h.narrator)").font(.caption).foregroundStyle(.secondary)
+                    Text(hadith.citation).font(.subheadline.weight(.semibold)).foregroundStyle(.green)
+                    if !hadith.narrator.isEmpty {
+                        Text("Narrated by \(hadith.narrator)").font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 Spacer()
-                Button { toggleBookmark(h) } label: {
-                    Image(systemName: store.isBookmarked(h) ? "bookmark.fill" : "bookmark")
-                        .foregroundStyle(.green)
+                Button { toggle() } label: {
+                    Image(systemName: store.isBookmarked(hadith) ? "bookmark.fill" : "bookmark").foregroundStyle(.green)
                 }
                 .buttonStyle(.plain)
             }
@@ -101,11 +159,11 @@ struct ContentView: View {
         .background(RoundedRectangle(cornerRadius: 16).fill(.green.opacity(0.10)))
     }
 
-    private func toggleBookmark(_ h: Hadith) {
-        if !store.isBookmarked(h) && store.reachedFreeLimit(isSubscribed: factory.subscriptions.isSubscribed) {
+    private func toggle() {
+        if !store.isBookmarked(hadith) && store.reachedFreeLimit(isSubscribed: factory.subscriptions.isSubscribed) {
             factory.presentPaywall(placement: "bookmark_limit")
         } else {
-            store.toggle(h)
+            store.toggle(hadith)
         }
     }
 }
