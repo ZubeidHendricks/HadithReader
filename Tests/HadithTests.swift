@@ -42,6 +42,18 @@ final class HadithTests: XCTestCase {
         XCTAssertTrue(HadithLibrary.search("a", in: HadithLibrary.collections).isEmpty)
     }
 
+    func testGradesPresent() {
+        let bukhari = HadithLibrary.load(named: "Sahih al-Bukhari")
+        // Every Bukhari narration carries a grade, and they are all Sahih.
+        XCTAssertTrue(bukhari.allSatisfy { $0.grade == "Sahih" })
+    }
+
+    func testRandomReturnsFromRequestedCollection() {
+        let bukhari = HadithLibrary.collections.first { $0.name == "Sahih al-Bukhari" }!
+        let pick = HadithLibrary.random(in: [bukhari])
+        XCTAssertEqual(pick?.collection, "Sahih al-Bukhari")
+    }
+
     func testTodayDrawsFromFreeCollection() {
         let today = HadithLibrary.today()
         XCTAssertNotNil(today)

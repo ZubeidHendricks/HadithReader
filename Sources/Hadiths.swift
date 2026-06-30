@@ -7,6 +7,7 @@ struct Hadith: Identifiable, Hashable, Codable {
     let text: String
     let arabic: String
     let narrator: String
+    let grade: String        // "Sahih" / "Hasan" / "Da'if" / "" (graded by source)
     let collection: String   // display name, e.g. "Sahih al-Bukhari"
     let reference: String    // hadith number
     var citation: String { reference.isEmpty ? collection : "\(collection) \(reference)" }
@@ -94,6 +95,15 @@ enum HadithLibrary {
     }
 
     static var freeCollectionList: [Collection] { collections.filter { $0.isFree } }
+
+    /// A random hadith from the given collections (used by the "Surprise me" button).
+    static func random(in cols: [Collection]) -> Hadith? {
+        for c in cols.shuffled() {
+            let items = load(c)
+            if let pick = items.randomElement() { return pick }
+        }
+        return nil
+    }
 }
 
 /// Saved bookmarks (denormalized so they display without loading a collection)
@@ -101,7 +111,7 @@ enum HadithLibrary {
 final class HadithStore: ObservableObject {
     @Published private(set) var bookmarks: [Hadith] = []
     static let freeBookmarks = 5
-    private let key = "hadith.bookmarks.v2"
+    private let key = "hadith.bookmarks.v3"
 
     init() { load() }
 

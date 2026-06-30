@@ -19,23 +19,34 @@ struct ContentView: View {
 // MARK: - Today
 
 private struct TodayView: View {
+    @EnvironmentObject private var factory: AppFactory
     @ObservedObject var store: HadithStore
-    @State private var today: Hadith?
+    @State private var current: Hadith?
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                if let today {
-                    HadithCard(hadith: today, store: store, big: true).padding(20)
-                } else {
-                    ProgressView().padding(.top, 80)
+                VStack(spacing: 16) {
+                    if let current {
+                        HadithCard(hadith: current, store: store, big: true)
+                    } else {
+                        ProgressView().padding(.top, 80)
+                    }
+                    Button { surprise() } label: {
+                        Label("Surprise me", systemImage: "shuffle").frame(maxWidth: .infinity, minHeight: 48)
+                    }
+                    .buttonStyle(.bordered).tint(.green)
                 }
+                .padding(20)
             }
             .navigationTitle("Today")
         }
-        .task {
-            today = await Task.detached { HadithLibrary.today() }.value
-        }
+        .task { if current == nil { current = await Task.detached { HadithLibrary.today() }.value } }
+    }
+
+    private func surprise() {
+        let cols = factory.subscriptions.isSubscribed ? HadithLibrary.collections : HadithLibrary.freeCollectionList
+        Task { current = await Task.detached { HadithLibrary.random(in: cols) }.value }
     }
 }
 
@@ -196,23 +207,52 @@ private struct HadithCard: View {
                 Divider()
             }
             Text(hadith.text).font(big ? .body : .callout)
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    if !hadith.grade.isEmpty { gradeChip }
                     Text(hadith.citation).font(.subheadline.weight(.semibold)).foregroundStyle(.green)
                     if !hadith.narrator.isEmpty {
                         Text("Narrated by \(hadith.narrator)").font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 Spacer()
-                Button { toggle() } label: {
-                    Image(systemName: store.isBookmarked(hadith) ? "bookmark.fill" : "bookmark").foregroundStyle(.green)
+                HStack(spacing: 18) {
+                    ShareLink(item: shareText) {
+                        Image(systemName: "square.and.arrow.up").foregroundStyle(.green)
+                    }
+                    Button { toggle() } label: {
+                        Image(systemName: store.isBookmarked(hadith) ? "bookmark.fill" : "bookmark").foregroundStyle(.green)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
         .background(RoundedRectangle(cornerRadius: 16).fill(.green.opacity(0.10)))
+    }
+
+    private var shareText: String {
+        var s = "“\(hadith.text)”\n— \(hadith.citation)"
+        if !hadith.grade.isEmpty { s += " (\(hadith.grade))" }
+        return s
+    }
+
+    private var gradeChip: some View {
+        Text(hadith.grade)
+            .font(.caption2.weight(.bold))
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background(gradeColor.opacity(0.18), in: Capsule())
+            .foregroundStyle(gradeColor)
+    }
+
+    private var gradeColor: Color {
+        switch hadith.grade.lowercased() {
+        case "sahih": return .green
+        case "hasan": return .teal
+        case let g where g.hasPrefix("da"): return .orange
+        default: return .gray
+        }
     }
 
     private func toggle() {
